@@ -1,0 +1,38 @@
+period:
+  start: "2021-04-01"
+  end: "2021-11-30"
+
+products: # k 
+  - "POS_00_04"
+  - "POS_04_08"
+  - "POS_08_12"
+  - "POS_12_16"
+  - "POS_16_20"
+  - "POS_20_24"
+  - "NEG_00_04"
+  - "NEG_04_08"
+  - "NEG_08_12"
+  - "NEG_12_16"
+  - "NEG_16_20"
+  - "NEG_20_24"
+
+max_flex_rc: 10 # m^RC
+max_flex_re: 15 # m^RE
+
+bid_price_rc_data: # p_i^RC
+  1: 5.0
+  2: 8.0
+
+bid_price_re_data: # p_i^RE
+  1: 50.0
+  2: 100.0
+  3: 50.0
+  4: 100.0
+
+forecast:
+  window_days: 30
+  alpha_method: mean
+
+solver:
+  name: gurobi
+

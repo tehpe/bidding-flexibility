@@ -1,3 +1,13 @@
-pyomo>=6.7.0
-pandas>=2.0.0
-pyyaml>=6.0.3
+et_xmlfile==2.0.0
+numpy==1.26.4
+openpyxl==3.1.5
+pandas==2.2.3
+pyarrow==15.0.2
+pyomo==6.10.0
+python-dateutil==2.9.0.post0
+pytz==2026.1.post1
+PyYAML==6.0.3
+setuptools==80.10.2
+six==1.17.0
+tzdata==2025.3
+wheel==0.46.3

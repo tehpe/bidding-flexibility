@@ -65,7 +65,7 @@ def L_k(activation_df, rem_offers_df, d, product, p):
     offers_day = rem_offers_df.loc[
         (rem_offers_df["date"] == d) & (rem_offers_df["product"] == product)
     ]
-    threshold = offers_day.loc[offers_day["ask_price"] <= p, "capacity_mw"].sum() # Psi_k(p)
+    threshold = offers_day.loc[offers_day["energy_price"] <= p, "allocated_capacity"].sum() # Psi_k(p)
 
     activated_day = activation_df.loc[
         (activation_df["date"] == d) & (activation_df["product"] == product),
@@ -73,36 +73,74 @@ def L_k(activation_df, rem_offers_df, d, product, p):
     
     return int((activated_day >= threshold).sum())
 
-
-def alpha_k(activation_df, rem_offers_df, forecast_date, product, p, window_days, method=None, q=None):
-    forecast_date = pd.to_datetime(forecast_date)
-
-    past_days = (
-        activation_df.loc[
-            (activation_df["product"] == product)
-            & activation_df["date"].between(
-                forecast_date - pd.Timedelta(days=window_days),
-                forecast_date - pd.Timedelta(days=1),
-            ),
-            "date",
-        ]
-        .drop_duplicates()
-        .sort_values()
-    )
-
-    L_values = []
-    for d in past_days:
-        L_values.append(L_k(activation_df, rem_offers_df, d, product, p))
-
-    L_values = pd.Series(L_values)
-
-    # stat methods
-    if method == "mean":
-        return L_values.mean()
-    if method == "median":
-        return L_values.median()
+def summary_stat(values, method, q=None): # method for different summary statistics
+    s = pd.Series(values)
     if method == "quantile":
         if q is None:
-            raise ValueError("q must be provided when method='quantile'")
-        return L_values.quantile(q)
+            raise ValueError("q required for quantile")
+        return s.quantile(q)
+    if method == "mean":
+        return s.mean()
+    if method == "median":
+        return s.median()
     raise ValueError(f"Undefined method: {method}")
+
+def alpha_k_all_prices( activation_df: pd.DataFrame, rem_offers_df: pd.DataFrame, forecast_date,
+    product: str, bid_prices: dict, window_days: int, method: str, q=None) -> dict:
+
+    # date range
+    forecast_date = pd.to_datetime(forecast_date)
+    start = forecast_date - pd.Timedelta(days=window_days)
+    end = forecast_date - pd.Timedelta(days=1)
+
+    act = activation_df.loc[
+        activation_df["product"].eq(product)
+        & activation_df["date"].between(start, end),
+        ["date", "activated_mw"],
+    ]
+
+    # prepare data slices
+    offers = rem_offers_df.loc[
+        rem_offers_df["product"].eq(product)
+        & rem_offers_df["date"].between(start, end),
+        ["date", "energy_price", "allocated_capacity"],
+    ]
+
+    # activation by day (day-based lookup dictionary)
+    act_by_day = {
+        d: (g["activated_mw"].abs().to_numpy() if product.startswith("NEG_")
+            else g["activated_mw"].to_numpy())
+        for d, g in act.groupby("date", sort=True)
+    }
+    
+    # offers by day: sorted prices + cumulative capacity (=daily supply curve)
+    offers_by_day = {}
+    for d, g in offers.groupby("date", sort=True):
+        g = g.sort_values("energy_price")
+        offers_by_day[d] = (
+            g["energy_price"].to_numpy(),
+            g["allocated_capacity"].cumsum().to_numpy(),
+        )
+
+    out = {}
+
+    for i, p in bid_prices.items():
+        daily_durations = []
+
+        for d, activated in act_by_day.items():
+            prices, cumcap = offers_by_day.get(d, (None, None))
+
+            if prices is None:
+                threshold = 0.0
+            else:
+                idx = prices.searchsorted(p, side="right") - 1
+                threshold = 0.0 if idx < 0 else float(cumcap[idx])
+
+            daily_durations.append(int((activated >= threshold).sum()))
+
+        out[i] = summary_stat(daily_durations, method, q)
+
+    return out
+
+
+
