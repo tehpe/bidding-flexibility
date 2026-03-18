@@ -17,22 +17,29 @@ products: # k
   - "NEG_20_24"
 
 max_flex_rc: 10 # m^RC
-max_flex_re: 15 # m^RE
+max_flex_re: 10 # m^RE
 
 bid_price_rc_data: # p_i^RC
-  1: 5.0
-  2: 8.0
+  1: 25
+  2: 50
+  3: 100
+  4: 225
+  5: 250
 
 bid_price_re_data: # p_i^RE
-  1: 50.0
-  2: 100.0
-  3: 50.0
-  4: 100.0
+  1: 25
+  2: 35
+  3: 45
+  4: 75
+  5: 85
+  6: 95
+
 
 forecast:
+  forecast_date: "05-05-2021"
   window_days: 30
   alpha_method: mean
+  alpha_q: NaN
 
 solver:
   name: gurobi
-

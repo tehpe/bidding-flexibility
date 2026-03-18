@@ -17,7 +17,7 @@ def main() -> None:
     config["n_bids"] = len(config["bid_price_rc_data"])
     config["m_bids"] = len(config["bid_price_re_data"])
 
-    forecast_date = "2021-05-01"
+    forecast_date = config["forecast"]["forecast_date"]
 
     print("Loading data...")
     marginal_prices = load_marginal_prices("data/marginal_prices.parquet")
@@ -57,21 +57,26 @@ def main() -> None:
         print(f"opt obj value: {pyo.value(model.obj)}")
         print(f"Total runtime: {time.perf_counter() - t_start:.2f}s")
 
+        tol = 1e-6
+
         print("\nReserve capacity market:")
         for k in model.K:
-            print(f"{k}:")
-            for i in model.N:
-                print(f"  m_rc[{k},{i}] = {pyo.value(model.m_rc[k, i])}")
-            print(f"  f_rc_k[{k}] = {pyo.value(model.f_rc_k[k])}")
-            print()
+            bids = [
+                (config["bid_price_rc_data"][i], pyo.value(model.m_rc[k, i]))
+                for i in model.N
+                if pyo.value(model.m_rc[k, i]) > tol
+            ]
+            print(f"{k}: {bids}")
 
         print("\nReserve energy market:")
         for k in model.K:
-            print(f"{k}:")
-            for i in model.M:
-                print(f"  m_re[{k},{i}] = {pyo.value(model.m_re[k, i])}")
-            print(f"  f_re_k[{k}] = {pyo.value(model.f_re_k[k])}")
-            print()
+            bids = [
+                (config["bid_price_re_data"][i], pyo.value(model.m_re[k, i]))
+                for i in model.M
+                if pyo.value(model.m_re[k, i]) > tol
+            ]
+            print(f"{k}: {bids}")
+
     else:
         print("Solver did not find an optimal solution.")
 

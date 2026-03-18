@@ -81,8 +81,6 @@ def summary_stat(values, method, q=None): # method for different summary statist
         return s.quantile(q)
     if method == "mean":
         return s.mean()
-    if method == "median":
-        return s.median()
     raise ValueError(f"Undefined method: {method}")
 
 def alpha_k_all_prices( activation_df: pd.DataFrame, rem_offers_df: pd.DataFrame, forecast_date,
