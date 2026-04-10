@@ -38,8 +38,10 @@ bid_price_re_data: # p_i^RE
 forecast:
   forecast_date: "05-05-2021"
   window_days: 30
-  alpha_method: mean
-  alpha_q: NaN
+  # alpha_method: mean
+  alpha_method: quantile
+  # alpha_q: NaN
+  alpha_q: 0.75
 
 solver:
   name: gurobi

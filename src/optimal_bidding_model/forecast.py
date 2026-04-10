@@ -59,19 +59,19 @@ def q_k(df, config, forecast_date):
 
 #%% REM estimating activation durations
 
-def L_k(activation_df, rem_offers_df, d, product, p):
-    d = pd.to_datetime(d)
+# def L_k(activation_df, rem_offers_df, d, product, p):
+#     d = pd.to_datetime(d)
 
-    offers_day = rem_offers_df.loc[
-        (rem_offers_df["date"] == d) & (rem_offers_df["product"] == product)
-    ]
-    threshold = offers_day.loc[offers_day["energy_price"] <= p, "allocated_capacity"].sum() # Psi_k(p)
+#     offers_day = rem_offers_df.loc[
+#         (rem_offers_df["date"] == d) & (rem_offers_df["product"] == product)
+#     ]
+#     threshold = offers_day.loc[offers_day["energy_price"] <= p, "allocated_capacity"].sum() # Psi_k(p)
 
-    activated_day = activation_df.loc[
-        (activation_df["date"] == d) & (activation_df["product"] == product),
-        "activated_mw"] # S_t
+#     activated_day = activation_df.loc[
+#         (activation_df["date"] == d) & (activation_df["product"] == product),
+#         "activated_mw"] # S_t
     
-    return int((activated_day >= threshold).sum())
+#     return int((activated_day >= threshold).sum())
 
 def summary_stat(values, method, q=None): # method for different summary statistics
     s = pd.Series(values)
@@ -94,7 +94,7 @@ def alpha_k_all_prices( activation_df: pd.DataFrame, rem_offers_df: pd.DataFrame
     act = activation_df.loc[
         activation_df["product"].eq(product)
         & activation_df["date"].between(start, end),
-        ["date", "activated_mw"],
+        ["date", "second", "activated_mw"],
     ]
 
     # prepare data slices
@@ -105,13 +105,16 @@ def alpha_k_all_prices( activation_df: pd.DataFrame, rem_offers_df: pd.DataFrame
     ]
 
     # activation by day (day-based lookup dictionary)
-    act_by_day = {
-        d: (g["activated_mw"].abs().to_numpy() if product.startswith("NEG_")
-            else g["activated_mw"].to_numpy())
-        for d, g in act.groupby("date", sort=True)
-    }
+    act_by_day = {}
+    for d, g in act.groupby("date", sort=True):
+        s = (
+            g.set_index("second")["activated_mw"]
+            .reindex(range(1, 14401), fill_value=0) # outcomment to avoid reindexing
+        )
+        act_by_day[d] = s.abs().to_numpy() if product.startswith("NEG_") else s.to_numpy()
+
     
-    # offers by day: sorted prices + cumulative capacity (=daily supply curve)
+    # offers by day: sorted prices + cumulative capacity (= daily supply curve)
     offers_by_day = {}
     for d, g in offers.groupby("date", sort=True):
         g = g.sort_values("energy_price")
@@ -139,6 +142,4 @@ def alpha_k_all_prices( activation_df: pd.DataFrame, rem_offers_df: pd.DataFrame
         out[i] = summary_stat(daily_durations, method, q)
 
     return out
-
-
 

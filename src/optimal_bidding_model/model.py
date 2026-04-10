@@ -23,7 +23,7 @@ def add_energy_market_constraints(model):
 
     def f_re_k_a_rule(m, k):
         return sum( 
-            m.p_re[i] * m.m_re[k,i] * m.a[k,i]
+            m.p_re[i] * m.m_re[k,i] * m.a[k,i]/3600
             for i in m.M)
     
     def f_re_limit_rule(m, k):
