@@ -1,0 +1,385 @@
+---
+title: "Data setup"
+format: html
+
+references:
+  - id: regelleistung_capacity_2021
+    type: webpage
+    author:
+      - literal: Regelleistung
+    title: RESULT_OVERVIEW_CAPACITY_MARKET_aFRR_2021
+    URL: "https://www.regelleistung.net/apps/datacenter/tendering-files/?productTypes=aFRR&markets=CAPACITY&fileTypes=RESULTS&dateRange=2021-01,2021-12"
+    accessed:
+      - year: 2025
+        month: 3
+        day: 17
+    note: "File: RESULT_OVERVIEW_CAPACITY_MARKET_aFRR_2021.xlsx; used for: marginal_prices"
+
+  - id: regelleistung_energy_2021
+    type: webpage
+    author:
+      - literal: Regelleistung
+    title: RESULT_LIST_ANONYM_ENERGY_MARKET_aFRR_2021
+    URL: "https://www.regelleistung.net/apps/datacenter/tendering-files/?productTypes=aFRR&markets=ENERGY&fileTypes=ANONYMOUS_LIST_OF_BIDS&dateRange=2021-01,2021-12"
+    accessed:
+      - year: 2025
+        month: 3
+        day: 17
+    note: "File: RESULT_LIST_ANONYM_ENERGY_MARKET_aFRR_2021.xlsx; used for: rem_offers"
+
+  - id: netztransparenz_seconds_2021
+    type: webpage
+    author:
+      - literal: Netztransparenz
+    title: Data in second resolution (aFRR target values)
+    URL: "https://www.netztransparenz.de/en/Balancing-Capacity/Balancing-Capacity-data/Data-in-second-resolution"
+    accessed:
+      - year: 2025
+        month: 3
+        day: 17
+    note: "File: SECONDS_BASE_AFRR_TARGET_VALUES_2021.csv; used for: activation_timeseries"
+---
+
+<style>
+table.table {
+  width: auto !important;
+  display: inline-table;     /* prevents stretching across page */
+  border-collapse: collapse !important;
+}
+table.table th,
+table.table td {
+  padding: 0.08rem 0.25rem !important;  /* tighter cells */
+  white-space: nowrap;
+}
+table { border-collapse: collapse; }
+th, td { border: 1px solid #ccc; }
+tbody tr:nth-child(even) { background: #f7f7f7; }
+</style>
+
+This example walks through how to recreate the bidding structure presented in Table 1 for May 5, 2021 (Gärtner, 2022):
+
+<div style="text-align: center;">
+
+| Product | RCM POS | RCM NEG | REM POS | REM NEG |
+|---|---|---|---|
+| **00_04** | (100, 10) | (25, 10)  | (85, 10)    | (45, 10) | 
+| **04_08** | (225, 10) | (250, 10) | (85, 10), (95, 10) | (75, 10) |
+| **08_12** | (250, 10) | (250, 10) | (95, 10)     | (25, 10) |
+| **12_16** | (225, 10) | (250, 10) | (75, 10)     | (35, 10) |
+| **16_20** | (50, 10)  | (250, 10) | (85, 10)     | (35, 10) |
+| **20_24** |  (25, 10) | (250, 10) | (95, 10)     | (25, 10) |
+:  (Price [€/MWh], Quantity [MW])
+
+</div>
+
+## Bids (configuation)
+In `config.yaml` define: 
+
+Available flexibility [MW]:
+$$ 
+m^{\mathrm{RC}}=10, \quad
+m^{\mathrm{RE}}=10
+$$ 
+
+
+Bid prices for scenario $i$ [€\MWh]: 
+$$
+p_i^{\mathrm{RC}} = \{25, 50, 100, 225, 250\}, \quad  
+p_i^{\mathrm{RE}} = \{25, 35, 45, 75, 85, 95\}
+$$
+
+## Acceptance probabilities (RCM)
+For each bidding scenario, the acceptance probability $q_i^{\mathrm{RC}, k}$ denotes the probability that the corresponding bid is the highest accepted bid. This probability is estimated by comparing the bid price against the historical daily marginal prices for product $k$ on day $d$, denoted by $\pi_d^{\mathrm{RC}, k}$.
+
+Data on the short-term distribution of daily marginal prices over the previous 30 days are obtained from [@regelleistung_capacity_2021]. For a bid submitted on May 5, 2021, this distribution is as follows:
+
+```{python}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 3
+#| out-width: 100%
+#| fig-align: center
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+df = pd.read_parquet("../data/marginal_prices.parquet")
+df["date"] = pd.to_datetime(df["date"])
+
+k_products = [ "POS_00_04", "POS_04_08", "POS_08_12", "POS_12_16", "POS_16_20",
+"POS_20_24", "NEG_00_04", "NEG_04_08", "NEG_08_12", "NEG_12_16", "NEG_16_20", "NEG_20_24"]
+last_date = pd.Timestamp("2021-05-05")
+start_date = last_date - pd.Timedelta(days=30)
+
+d = df[df["product"].isin(k_products)]
+d = d[(d["date"] >= start_date) & (d["date"] < last_date)]
+
+fig, ax = plt.subplots()
+
+for p in k_products:
+    x = d[d["product"] == p].sort_values("date")
+    ax.plot(x["date"], x["marginal_price"], marker="o", ms=2.2, lw=1.2, label=p)
+
+ax.set_xlabel("Date")
+ax.set_ylabel("Marginal price")
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.grid(axis="y", alpha=0.25)
+
+ax.xaxis.set_major_locator(mdates.DayLocator(interval=7))
+ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+plt.setp(ax.get_xticklabels(), ha="right", fontsize=8)
+
+ax.tick_params(axis="y", labelsize=8)
+ax.legend(frameon=False, fontsize=8)
+fig.tight_layout()
+plt.show()
+```
+
+
+To estimate the acceptance probabilities, we construct an empirical cumulative distribution function (ECDF) from the daily marginal prices observed over the last 30 days. For any bid price $p$ the ECDF gives the proportion of historical observations for which the daily marginal price $\pi_d^{\mathrm{RC}}$ is less than or equal to $p$.
+
+The ECDF for the last $d=30$ days is defined as: 
+$$
+    \widehat{F_d}(p)=\frac{1}{30} \sum_{j=1}^{30} 1_{\pi_{d-j}^{R C, k} \leq p}
+$$
+
+Example of $\widehat{F_d}(p)$ for product "POS_08_12" and how to read when e.g. bid price = 25 €/MWh:
+```{python}
+#| echo: false
+#| fig-width: 6
+#| fig-height: 3
+#| out-width: 100%
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# inputs
+product = "POS_08_12"
+last_date = pd.Timestamp("2021-05-05")      # forecast day (excluded)
+window_days = 30
+p_star = 25.0                                # bid price
+
+# load + filter last 30 days prior to last_date
+df = pd.read_parquet("../data/marginal_prices.parquet")
+df["date"] = pd.to_datetime(df["date"])
+
+start_date = last_date - pd.Timedelta(days=window_days)
+w = df[(df["product"] == product) &
+       (df["date"] >= start_date) &
+       (df["date"] < last_date)]["marginal_price"].dropna().to_numpy()
+
+# ECDF
+x = np.sort(w)
+y = np.arange(1, len(x) + 1) / len(x)
+
+# F_hat(p*)
+F_p_star = (w <= p_star).mean()
+
+# plot
+fig, ax = plt.subplots()
+ax.step(x, y, where="post", lw=1.8, label="ECDF")
+ax.axvline(p_star, color="tab:red", ls="--", lw=1.2, label=f"bid p*={p_star:g}")
+ax.axhline(F_p_star, color="tab:green", ls="--", lw=1.2, label=f"F_hat(p*)={F_p_star:.2f}")
+
+ax.set_xlabel("Price p")
+ax.set_ylabel("F_hat_d(p)")
+ax.set_ylim(0, 1.02)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.grid(axis="y", alpha=0.25)
+ax.legend(frameon=False)
+fig.tight_layout()
+plt.show()
+```
+
+::: {.columns}
+
+::: {.column width="55%"}
+Probability that exactly the first i offers are accepted: $q_i = \mathrm{P}(\pi > p_i)$.
+\begin{equation}
+    \begin{aligned} q_0^{\mathrm{RC}, \mathrm{k}} & =\widehat{\mathrm{F}_{\mathrm{d}}}\left(\mathrm{p}_1\right) \\ 
+    q_1^{\mathrm{RC}, k} & =\widehat{F_d}\left(p_2\right)-\widehat{F_d}\left(p_1\right) \\ 
+    q_2^{\mathrm{RC}, k} & =\widehat{F_d}\left(p_3\right)-\widehat{F_d}\left(p_2\right) \\ 
+    & \vdots \\ q_N^{\mathrm{RC}, k} & =1-\widehat{F_d}\left(p_N\right)\end{aligned}
+\end{equation}
+:::
+
+::: {.column width="45%"}
+Computed for this example:
+
+```{python}
+#| echo: false
+import pandas as pd
+import numpy as np
+
+p = np.array([25, 50, 100, 225, 250], dtype=float)
+F = np.array([(w <= pi).mean() for pi in p])
+
+q = np.empty(len(p) + 1)
+q[0] = F[0]
+q[1:-1] = F[1:] - F[:-1]
+q[-1] = 1 - F[-1]
+
+table = pd.DataFrame({
+    "p_i": [np.nan] + list(p),
+    "q_i": q
+}).round(2)
+
+table_t = table.T
+table_t.columns = [f"i={c}" for c in table_t.columns]
+
+(table_t
+ .round(2)
+ .style
+ .format("{:.2f}")
+ .set_properties(**{"text-align": "center"})
+ .set_table_styles([
+     {"selector": "th", "props": [("text-align", "center")]},
+     {"selector": "td", "props": [("text-align", "center")]},
+     {"selector": "table", "props": [("margin-left", "auto"), ("margin-right", "auto")]}
+ ]))
+```
+:::
+:::
+
+## Activation time (REM)
+For a fixed day
+
+- $S^k_t$ is the reserve energy activation amount [MW] at second $t$ and product $k$ obtained from [@netztransparenz_seconds_2021]
+- $\Psi^k(p)$ is the sum of offered capacity in MW for product $k$ from all offerrs with an ask price at most $p$. This can be viewed as the the total capacity activated by the TSO before offer with ask price $p$ will be activated. Obtained from [@regelleistung_energy_2021]
+
+
+The aFRR activation duration for product $k$ and bid price $p$ is denoted $L^k (p)$: 
+
+\begin{equation}
+    L^k(p)=\sum_{t \in k} 1_{S_t^k \geq \Psi^k(p)}
+\end{equation}
+
+For product "POS_00_04": 
+```{python}
+#| echo: false
+#| fig-width: 9
+#| fig-height: 3
+#| out-width: 100%
+#| fig-align: center
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# time series (activation per second)
+df = pd.read_parquet("../data/activation_timeseries.parquet")
+df["date"] = pd.to_datetime(df["date"])
+
+product = "POS_00_04"
+day = pd.Timestamp("05-05-2021")
+
+s = (df.query("date == @day and product == @product")
+       .set_index("second")["activated_mw"]
+       .reindex(range(1, 14401), fill_value=0))
+
+# merit-order offers (Psi^k(p))
+rem_offers = pd.read_parquet("../data/rem_offers.parquet")  # adjust path if needed
+rem_offers["date"] = pd.to_datetime(rem_offers["date"])
+
+psi = (rem_offers.query("date == @day and product == @product")
+         .sort_values("energy_price")
+         .assign(psi=lambda x: x["allocated_capacity"].cumsum()))
+
+# plot
+fig, ax = plt.subplots(1, 2, figsize=(9, 3))
+
+ax[0].step(s.index, s.values, where="post", label="activated MW")
+ax[0].set_xlabel("second")
+ax[0].set_ylabel("MW")
+ax[0].set_title(f"{product}")
+ax[0].set_title(r"Activation $S^k_t$ for k=" f"{product}")
+ax[0].legend()
+
+ax[1].step(psi["energy_price"], psi["psi"], where="post", label=r"$\Psi^k(p)$")
+ax[1].set_xlabel("ask price p")
+ax[1].set_ylabel("cumulative MW")
+ax[1].set_title(r"Merit curve $\Psi^k(p)$")
+ax[1].legend()
+
+plt.tight_layout()
+plt.show()
+# print(s.values.sum())
+# print(psi["allocated_capacity"].sum())
+
+p0 = 85  # chosen ask price
+
+psi_p0 = (rem_offers.query("date == @day and product == @product and energy_price <= @p0")
+                    ["allocated_capacity"].sum())
+
+y_red = psi_p0   # or psi_p0, depending on your sign convention
+
+x = s.index.to_numpy()
+y_blue = s.values
+
+plt.figure(figsize=(6, 3))
+plt.step(x, y_blue, where="post", label="activated MW", color="C0")
+plt.axhline(y_red, color="red", ls="--", label=fr"$\Psi^k({p0})={psi_p0:.1f}$")
+
+# shade area BETWEEN blue and red: below red, above blue
+plt.fill_between(
+    x, y_blue, y_red,
+    where=(y_blue > y_red),
+    step="post",
+    alpha=0.25,
+    color="orange",
+    label="activation duration"
+)
+
+plt.xlabel("second")
+plt.ylabel("MW")
+plt.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False)
+plt.tight_layout()
+plt.show()
+
+duration_above_psi = (s >= - psi_p0).sum()   # or <= depending on sign convention
+print(f"Activation duration L^k({p0}): {duration_above_psi:,} seconds")
+
+
+bid_prices = [25, 35, 45, 75, 85, 95]
+
+# previous 30 days relative to `day`
+end_day = pd.Timestamp(day) - pd.Timedelta(days=1)
+start_day = pd.Timestamp(day) - pd.Timedelta(days=30)
+
+days = sorted(
+    df.loc[
+        (df["date"] >= start_day) & (df["date"] <= end_day) & (df["product"] == product),
+        "date"
+    ].drop_duplicates()
+)
+
+results = {}
+
+for p0 in bid_prices:
+    daily_durations = []
+
+    for d in days:
+        s_d = (
+            df.query("date == @d and product == @product")
+              .set_index("second")["activated_mw"]
+              .reindex(range(1, 14401), fill_value=0)
+        )
+
+        psi_p0_d = (
+            rem_offers.query("date == @d and product == @product and energy_price <= @p0")
+                      ["allocated_capacity"].sum()
+        )
+
+        dur_d = (s_d.abs() >= psi_p0_d).sum()
+
+        daily_durations.append(int(dur_d))
+
+    results[p0] = pd.Series(daily_durations).mean()
+
+alpha_by_price = pd.Series(results, name="mean_duration_sec")
+print(alpha_by_price)
+```
+
